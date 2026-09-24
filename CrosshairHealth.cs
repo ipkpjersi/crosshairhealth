@@ -184,6 +184,7 @@ public class CrosshairHealth : Script
     private DateTime lastLog = DateTime.MinValue;
     private DateTime lastProbe = DateTime.MinValue;
     private string lastError = "none";
+    private string lastLookup = "none";
 
     public CrosshairHealth()
     {
@@ -292,16 +293,17 @@ public class CrosshairHealth : Script
                 // itself is wrong rather than the conditions around it.
                 this.DrawHealthRing(e.Graphics, 1f);
 
-                if ((DateTime.Now - this.lastLog).TotalSeconds >= 1.0)
+                if ((DateTime.Now - this.lastLog).TotalSeconds >= 0.25)
                 {
                     this.lastLog = DateTime.Now;
                     // camDist and fov are logged together so the two first-person mods
                     // can be told apart by their fingerprints, if they differ at all.
                     this.Log(string.Format(
-                        "active={0} flags={6} camDist={1:0.000} fov={2:0.0} target={3} health={4} err={5}",
+                        "active={0} flags={6} via={7} camDist={1:0.000} fov={2:0.0} target={3} health={4} err={5}",
                         firstPerson, this.CameraDistance(), this.CameraFov(),
                         target == null ? "none" : target.Model.ToString(),
-                        target == null ? -1 : target.Health, this.lastError, FlagDump()));
+                        target == null ? -1 : target.Health, this.lastError, FlagDump(),
+                        this.lastLookup));
                 }
             }
 
@@ -631,6 +633,7 @@ public class CrosshairHealth : Script
         Ped locked = Game.LocalPlayer.GetTargetedPed();
         if (locked != null && locked.Exists())
         {
+            this.lastLookup = "lockon";
             return locked;
         }
 
@@ -680,6 +683,7 @@ public class CrosshairHealth : Script
             }
         }
 
+        this.lastLookup = best != null ? "freeaim" : "none";
         return best;
     }
 
