@@ -50,6 +50,23 @@ public class CrosshairHealth : Script
     // nothing else in this stack binds. Set ToggleKey to 0 in the ini to disable it.
     private static int ToggleKey = 117;
 
+    // How long a wounded target keeps its ring after the game stops reporting it, in
+    // milliseconds. Zero turns the hold off entirely.
+    //
+    // The lookup is not steady: logged at four samples a second while aiming at one ped and
+    // shooting, GetTargetedPed dropped out for runs of up to about 1.75 seconds at a time
+    // while the ped stayed squarely under the crosshair. Health itself was never stale, so
+    // what was missing was the target, not the number. Bridging those gaps is what stops
+    // the ring flickering out mid-fight.
+    //
+    // Only a target that has actually been hurt is held. A ped at full health that the
+    // lookup drops was probably never really being aimed at, and holding those would leave
+    // the ring sitting on bystanders after a glance.
+    private static int TargetHoldMs = 2000;
+
+    private Ped heldTarget;
+    private DateTime heldSince = DateTime.MinValue;
+
     // Probe mode. Walks the aimed-at ped's structure looking for fields that match the
     // health the game reports, and logs them with their neighbours. Used to find where
     // CPed keeps current and maximum health, since the API exposes no getter for the
@@ -241,6 +258,7 @@ public class CrosshairHealth : Script
                     case "OffsetX":   if (parsed) { OffsetX = number / 1440f; } break;
                     case "OffsetY":   if (parsed) { OffsetY = number / 1440f; } break;
                     case "ToggleKey": if (parsed) { ToggleKey = (int)number; } break;
+                    case "TargetHoldMs": if (parsed) { TargetHoldMs = (int)number; } break;
                     case "Probe":     if (parsed) { Probe = number != 0f; } break;
                 }
             }
@@ -285,7 +303,7 @@ public class CrosshairHealth : Script
             // test stays available but is no longer what decides this.
             bool? fromMod = C06altCrosshairActive();
             bool firstPerson = fromMod.HasValue && fromMod.Value;
-            Ped target = this.GetAimedAtPed();
+            Ped target = this.HoldWoundedTarget(this.GetAimedAtPed());
 
             if (Debug)
             {
@@ -685,6 +703,52 @@ public class CrosshairHealth : Script
 
         this.lastLookup = best != null ? "freeaim" : "none";
         return best;
+    }
+
+    // Keep a wounded target for a moment after the lookup loses it, and remember the one
+    // that is currently found. Anything at full health is not held, and the hold ends as
+    // soon as the ped stops existing or dies.
+    private Ped HoldWoundedTarget(Ped found)
+    {
+        if (found != null && found.Exists())
+        {
+            this.heldTarget = found;
+            this.heldSince = DateTime.Now;
+            return found;
+        }
+
+        if (TargetHoldMs <= 0 || this.heldTarget == null)
+        {
+            return found;
+        }
+
+        if ((DateTime.Now - this.heldSince).TotalMilliseconds > TargetHoldMs)
+        {
+            this.heldTarget = null;
+            return found;
+        }
+
+        try
+        {
+            if (!this.heldTarget.Exists() || !this.heldTarget.isAlive)
+            {
+                this.heldTarget = null;
+                return found;
+            }
+
+            // Only worth holding if they are hurt. An untouched ped that the lookup drops
+            // was most likely never the one being aimed at.
+            if (this.heldTarget.Health < this.FullHealthFor(this.heldTarget))
+            {
+                return this.heldTarget;
+            }
+        }
+        catch
+        {
+            this.heldTarget = null;
+        }
+
+        return found;
     }
 
     // Health is not drawn while the player is in a vehicle, and that matches the game
