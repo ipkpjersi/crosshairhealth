@@ -54,6 +54,15 @@ offsets are pixels at 1440p and scale with screen height.
 | `ToggleKey` | 117 (F6) | flips it on and off in play; 0 disables the key |
 | `Debug` | 0 | draws unconditionally and logs once a second |
 | `Probe` | 0 | walks the aimed-at ped's structure, for finding offsets |
+| `MaxHealthOffset` | 0x110 | where a ped keeps its maximum health |
+| `FpObjectRva` | 0x5d9d0 | C06alt's state object, from its module base |
+| `FlagOnFootOffset` | 0x155 | first person, one mode |
+| `FlagInVehicleOffset` | 0x15a | first person, other mode |
+| `FlagSuppressedOffset` | 0x112 | crosshair suppressed |
+
+The five offsets are hex, with or without an `0x` prefix, and a bad value is ignored rather
+than applied. They only need touching on a build other than the one they were found on, so
+see below.
 
 ## What it reads, and how those offsets were found
 
@@ -77,8 +86,19 @@ while shooting them settled it, with `+0x110` holding 100 while the reported hea
 through 78, 51 and 23. Current health is not stored as a plain int or float anywhere in the
 first 0x2000 bytes, which does not matter, because `ped.Health` reports it.
 
-Both are checked before use, and the offsets hold for these builds only. A different
-`FirstPerson.asi` needs its flags found again; a bad read falls back rather than failing.
+Both are checked before use, and all five offsets live in the ini so another build can be
+accommodated without recompiling.
+
+**On another game version, Complete Edition being the obvious one:** the three C06alt
+offsets are relative to `FirstPerson.asi`'s own module base rather than to the game, so they
+carry over if the same v1.3 binary is used there. `MaxHealthOffset` is a `CPed` field and
+belongs to the game version, so expect it to move on 1.2.0.59. Set `Probe = 1`, aim at
+someone, shoot them, and read `crosshairhealth.log` for the offset that holds steady while
+the reported health falls; then put that number in the ini.
+
+Worth knowing: the sanity check on maximum health only rejects values outside 1 to 10000, so
+a wrong offset that happens to hold a plausible float will be accepted and scale the ring
+against nonsense. Probing is the way to be sure rather than assuming the default carried.
 
 ## Building
 

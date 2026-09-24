@@ -70,10 +70,10 @@ public class CrosshairHealth : Script
     // own +0x150 check corresponds to the absolute store at 0x1005db20, which is what puts
     // the object's base at 0x1005d9d0. Offsets therefore hold for this build only, which
     // is why a mismatch falls back to the camera test rather than failing outright.
-    private const int FpObjectRva = 0x5d9d0;
-    private const int FlagOnFootRva = FpObjectRva + 0x155;
-    private const int FlagInVehicleRva = FpObjectRva + 0x15a;
-    private const int FlagSuppressedRva = FpObjectRva + 0x112;
+    private static int FpObjectRva = 0x5d9d0;
+    private static int FlagOnFootOffset = 0x155;
+    private static int FlagInVehicleOffset = 0x15a;
+    private static int FlagSuppressedOffset = 0x112;
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet =
         System.Runtime.InteropServices.CharSet.Ansi)]
@@ -153,7 +153,7 @@ public class CrosshairHealth : Script
     // while the reported health fell through 78, 51 and 23, so it is the maximum and not
     // the current value. Current health is not a plain int or float anywhere in the first
     // 0x2000 bytes, which does not matter, because ped.Health reports it.
-    private const int MaxHealthOffset = 0x110;
+    private static int MaxHealthOffset = 0x110;
 
     // What that field is allowed to contain before it is treated as nonsense. A ped
     // reading zero, or something wild, falls back to the floor rather than producing a
@@ -228,6 +228,11 @@ public class CrosshairHealth : Script
 
                 switch (key)
                 {
+                    case "MaxHealthOffset":     ParseOffset(value, ref MaxHealthOffset); break;
+                    case "FpObjectRva":         ParseOffset(value, ref FpObjectRva); break;
+                    case "FlagOnFootOffset":    ParseOffset(value, ref FlagOnFootOffset); break;
+                    case "FlagInVehicleOffset": ParseOffset(value, ref FlagInVehicleOffset); break;
+                    case "FlagSuppressedOffset": ParseOffset(value, ref FlagSuppressedOffset); break;
                     case "Enabled":   if (parsed) { Enabled = number != 0f; } break;
                     case "Debug":     if (parsed) { Debug = number != 0f; } break;
                     case "Radius":    if (parsed) { RingRadius = number / 1440f; } break;
@@ -337,6 +342,32 @@ public class CrosshairHealth : Script
         }
     }
 
+    // Offsets are written as hex, with or without an 0x prefix, because that is how they
+    // are recorded everywhere else. Decimal is accepted too. An unreadable value leaves the
+    // default in place rather than zeroing it.
+    private static void ParseOffset(string value, ref int target)
+    {
+        try
+        {
+            string text = value.Trim();
+            if (text.StartsWith("0x") || text.StartsWith("0X"))
+            {
+                text = text.Substring(2);
+            }
+
+            int parsed;
+            if (int.TryParse(text, System.Globalization.NumberStyles.HexNumber,
+                             System.Globalization.CultureInfo.InvariantCulture, out parsed)
+                && parsed > 0)
+            {
+                target = parsed;
+            }
+        }
+        catch
+        {
+        }
+    }
+
     // The base address of FirstPerson.asi, or zero when it is not loaded. The module has
     // relocations, so this cannot assume the preferred base of 0x10000000.
     private static IntPtr FirstPersonModule()
@@ -376,9 +407,9 @@ public class CrosshairHealth : Script
 
         try
         {
-            bool onFoot = ReadFlag(module, FlagOnFootRva) != 0;
-            bool inVehicle = ReadFlag(module, FlagInVehicleRva) != 0;
-            bool suppressed = ReadFlag(module, FlagSuppressedRva) != 0;
+            bool onFoot = ReadFlag(module, FpObjectRva + FlagOnFootOffset) != 0;
+            bool inVehicle = ReadFlag(module, FpObjectRva + FlagInVehicleOffset) != 0;
+            bool suppressed = ReadFlag(module, FpObjectRva + FlagSuppressedOffset) != 0;
 
             return (onFoot || inVehicle) && !suppressed;
         }
@@ -446,9 +477,9 @@ public class CrosshairHealth : Script
         try
         {
             return string.Format("foot={0} veh={1} supp={2}",
-                ReadFlag(module, FlagOnFootRva),
-                ReadFlag(module, FlagInVehicleRva),
-                ReadFlag(module, FlagSuppressedRva));
+                ReadFlag(module, FpObjectRva + FlagOnFootOffset),
+                ReadFlag(module, FpObjectRva + FlagInVehicleOffset),
+                ReadFlag(module, FpObjectRva + FlagSuppressedOffset));
         }
         catch
         {
