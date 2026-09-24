@@ -1,0 +1,5 @@
+# The built script is committed on purpose, the same as the other scripts here, so it can
+# be installed without mono present. Rebuild it with ./build.sh.
+
+# Written only when Debug or Probe is on.
+crosshairhealth.log
