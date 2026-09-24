@@ -64,6 +64,12 @@ public class CrosshairHealth : Script
     // the ring sitting on bystanders after a glance.
     private static int TargetHoldMs = 2000;
 
+    // How far off the middle of the view a held target may drift before the hold is
+    // dropped, in degrees. The hold exists to bridge a lookup that blinks out while the
+    // ped is still being aimed at; deliberately looking away should end it at once, not
+    // two seconds later.
+    private static float HoldConeDegrees = 6f;
+
     private Ped heldTarget;
     private DateTime heldSince = DateTime.MinValue;
 
@@ -259,6 +265,7 @@ public class CrosshairHealth : Script
                     case "OffsetY":   if (parsed) { OffsetY = number / 1440f; } break;
                     case "ToggleKey": if (parsed) { ToggleKey = (int)number; } break;
                     case "TargetHoldMs": if (parsed) { TargetHoldMs = (int)number; } break;
+                    case "HoldConeDegrees": if (parsed) { HoldConeDegrees = number; } break;
                     case "Probe":     if (parsed) { Probe = number != 0f; } break;
                 }
             }
@@ -738,10 +745,21 @@ public class CrosshairHealth : Script
 
             // Only worth holding if they are hurt. An untouched ped that the lookup drops
             // was most likely never the one being aimed at.
-            if (this.heldTarget.Health < this.FullHealthFor(this.heldTarget))
+            if (this.heldTarget.Health >= this.FullHealthFor(this.heldTarget))
             {
-                return this.heldTarget;
+                return found;
             }
+
+            // And only while they are still roughly under the crosshair. Without this the
+            // ring follows a wounded ped around for the length of the hold even after
+            // deliberately aiming somewhere else.
+            if (!this.StillUnderCrosshair(this.heldTarget))
+            {
+                this.heldTarget = null;
+                return found;
+            }
+
+            return this.heldTarget;
         }
         catch
         {
@@ -749,6 +767,39 @@ public class CrosshairHealth : Script
         }
 
         return found;
+    }
+
+    // Whether this ped is still near enough to the middle of the view to count as the one
+    // being aimed at, measured against the camera's forward direction.
+    private bool StillUnderCrosshair(Ped ped)
+    {
+        try
+        {
+            Camera camera = Game.CurrentCamera;
+            if (camera == null)
+            {
+                return false;
+            }
+
+            Vector3 forward = camera.Direction;
+            forward.Normalize();
+
+            Vector3 toPed = ped.Position - camera.Position;
+            if (toPed.Length() < 0.5f)
+            {
+                return false;
+            }
+            toPed.Normalize();
+
+            float alignment = (toPed.X * forward.X) + (toPed.Y * forward.Y)
+                              + (toPed.Z * forward.Z);
+
+            return alignment >= (float)Math.Cos(HoldConeDegrees * Math.PI / 180.0);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // Health is not drawn while the player is in a vehicle, and that matches the game
